@@ -374,3 +374,23 @@ def diagonal_analysis(g, Z=None):
         if both == 2:
             diag[v] = -1
     return diag
+
+def find_Zell(g, _base=None):
+    """
+    Return the zero forcing number of the looped graph obtained by placing
+    (exactly one) loop on every vertex of g.
+
+    Input:
+        g: a simple graph, the underlying graph of the looped graph.
+        _base: optional precomputed base bipartite graph (from _tilde_bipartite_base) for reuse.
+
+    Output:
+        the zero forcing number of the fully-looped graph.
+
+    Examples:
+        sage: g = graphs.PathGraph(5)
+        sage: find_fully_loopedZ(g)
+        # (returns an integer)
+    """
+    V = list(g.vertices())
+    return find_loopedZ(g, I=V, J=[], _base=_base)
