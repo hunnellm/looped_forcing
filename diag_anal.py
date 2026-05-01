@@ -487,10 +487,40 @@ def find_Zell(g, _base=None, return_sets=False):
     Yg = Y(g)
     if not return_sets:
         return find_gZ(h, Yg, []) - g.order()
-    # Collect all minimum ZFS of the tilde bipartite graph, extract 'a'-components.
+    # Collect all minimum ZFS of the tilde bipartite graph (size = g.order() + Zell(g)),
+    # then extract only the 'a'-components; each resulting frozenset has size Zell(g).
     all_sets = find_all_gzfs(h, Yg, [])
     result = sorted(
         (frozenset(v[1] for v in s if v[0] == 'a') for s in all_sets),
-        key=sorted,
+        key=lambda s: sorted(s),
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Demo – run this file directly to see find_Zell in action:
+#   sage diag_anal.py   (or load("diag_anal.py") inside a Sage session)
+# ---------------------------------------------------------------------------
+if __name__ == '__main__':
+    # Example 1: path graph on 5 vertices
+    # Only the two endpoints {0} and {4} are minimum zero forcing sets.
+    g_path = graphs.PathGraph(5)
+    print("=== Path graph P_5 ===")
+    print("find_Zell(g)              ->", find_Zell(g_path))
+    print("find_Zell(g, return_sets=True) ->", find_Zell(g_path, return_sets=True))
+    print()
+
+    # Example 2: complete graph K_3
+    # Every single vertex forces the rest, so all singleton sets are minima.
+    g_k3 = graphs.CompleteGraph(3)
+    print("=== Complete graph K_3 ===")
+    print("find_Zell(g)              ->", find_Zell(g_k3))
+    print("find_Zell(g, return_sets=True) ->", find_Zell(g_k3, return_sets=True))
+    print()
+
+    # Example 3: edge graph K_2 (two vertices connected by one edge)
+    # Both {0} and {1} achieve the minimum.
+    g_k2 = Graph({0: [1], 1: [0]})
+    print("=== Edge graph K_2 ===")
+    print("find_Zell(g)              ->", find_Zell(g_k2))
+    print("find_Zell(g, return_sets=True) ->", find_Zell(g_k2, return_sets=True))
