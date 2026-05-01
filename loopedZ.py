@@ -89,6 +89,46 @@ def gZ_leq(graph, support=None, bannedset=None, i=None):
 			return test_set
 	return False
 
+def gZ_leq_all(graph, support=None, bannedset=None, i=None):
+	"""
+	For a given graph with support and banned set, return *all* zero forcing sets of size i
+	(each a frozenset containing the support plus exactly i-len(support) additional vertices).
+	Returns an empty list when no such set exists.
+
+	Input:
+		graph: a simple graph
+		support: a list of vertices of graph
+		bannedset: a list of tuples representing banned edges of graph
+		i: an integer; collect every ZFS of exactly this size
+
+	Output:
+		A list of frozensets, each a zero forcing set of size i that includes the support.
+		The list is in the iteration order produced by Subsets (stable/deterministic).
+
+	Examples:
+		sage: gZ_leq_all(graphs.PathGraph(5), [], [], 1)
+		[frozenset({0})]
+		sage: gZ_leq_all(graphs.PathGraph(5), [], [], 2)
+		[frozenset({0, 1}), frozenset({0, 2}), frozenset({0, 3}), frozenset({0, 4}), frozenset({1, 2}), frozenset({1, 3}), frozenset({1, 4}), frozenset({2, 3}), frozenset({2, 4}), frozenset({3, 4})]
+	"""
+	if support is None:
+		support = []
+	if bannedset is None:
+		bannedset = []
+	if i < len(support):
+		return []
+	j = i - len(support)  # additional vertices beyond support
+	support_set = set(support)
+	VX = [v for v in graph.vertices() if v not in support_set]
+	order = graph.order()
+	results = []
+	for subset in Subsets(VX, j):
+		test_set = support_set.union(subset)
+		outcome = gzerosgame(graph, test_set, bannedset)
+		if len(outcome) == order:
+			results.append(frozenset(test_set))
+	return results
+
 def find_gzfs(graph, support=None, bannedset=None, upper_bound=None, lower_bound=None):
 	"""
 	For a given graph with support and banned set, return the an optimal generalized zero forcing set. If upper_bound is less than the generalized zero forcing number then return ['wrong']. If lower_bound is greater than the generalized zero forcing number then the return value will not be correct
@@ -142,6 +182,37 @@ def find_gzfs(graph, support=None, bannedset=None, upper_bound=None, lower_bound
 			find = 1
 			i = i - 1
 	return outcome
+
+def find_all_gzfs(graph, support=None, bannedset=None, upper_bound=None, lower_bound=None):
+	"""
+	Return *all* optimal generalized zero forcing sets (every ZFS of minimum size).
+	The minimum size is determined first using find_gZ, then gZ_leq_all enumerates
+	every ZFS of that size.
+
+	Input:
+		graph: a simple graph
+		support: a list of vertices of graph
+		bannedset: a list of tuples representing banned edges of graph
+		upper_bound: an integer, an upper bound for gZ (may shorten computation)
+		lower_bound: an integer, a lower bound for gZ (may shorten computation)
+
+	Output:
+		A list of frozensets, each a minimum zero forcing set.  The list is in the
+		stable iteration order produced by Subsets.  Returns an empty list only if
+		no zero forcing set exists (degenerate/empty graph).
+
+	Examples:
+		sage: find_all_gzfs(graphs.PathGraph(5))
+		[frozenset({0}), frozenset({4})]
+		sage: find_all_gzfs(graphs.PathGraph(5), [1], [(3, 2)])
+		[frozenset({0, 1, 3})]
+	"""
+	if support is None:
+		support = []
+	if bannedset is None:
+		bannedset = []
+	min_size = find_gZ(graph, support, bannedset, upper_bound, lower_bound)
+	return gZ_leq_all(graph, support, bannedset, min_size)
 
 def find_gZ(graph, support=None, bannedset=None, upper_bound=None, lower_bound=None):
 	"""
@@ -375,22 +446,82 @@ def diagonal_analysis(g, Z=None):
             diag[v] = -1
     return diag
 
-def find_Zell(g, _base=None):
+def find_Zell(g, _base=None, return_sets=False):
     """
     Return the zero forcing number of the looped graph obtained by placing
     (exactly one) loop on every vertex of g.
 
     Input:
         g: a simple graph, the underlying graph of the looped graph.
-        _base: optional precomputed base bipartite graph (from _tilde_bipartite_base) for reuse.
+        _base: optional precomputed base bipartite graph (from _tilde_bipartite_base)
+               for reuse across multiple calls.
+        return_sets: bool (default False).
+            * False  – return the zero forcing number as an integer (original behaviour).
+            * True   – return a sorted list of frozensets.  Each frozenset contains the
+                       g-vertex indices (the 'a'-component) present in one minimum zero
+                       forcing set of the associated tilde bipartite graph.  That is,
+                       every frozenset has exactly Zell(g) elements, and the list
+                       contains every distinct such set.
 
     Output:
-        the zero forcing number of the fully-looped graph.
+        int  when return_sets is False  – the zero forcing number Z_ell(g).
+        list when return_sets is True   – a sorted list of frozensets of g-vertex
+             indices, one frozenset per minimum zero forcing set.
 
     Examples:
         sage: g = graphs.PathGraph(5)
-        sage: find_fully_loopedZ(g)
-        # (returns an integer)
+        sage: find_Zell(g)
+        1
+        sage: find_Zell(g, return_sets=True)
+        [frozenset({0}), frozenset({4})]
+        sage: g2 = Graph({0: [1], 1: [0]})
+        sage: find_Zell(g2)
+        1
+        sage: find_Zell(g2, return_sets=True)
+        [frozenset({0}), frozenset({1})]
     """
+    if _base is None:
+        _base = _tilde_bipartite_base(g)
     V = list(g.vertices())
-    return find_loopedZ(g, I=V, J=[], _base=_base)
+    h = _tilde_bipartite_with_I(_base, V)
+    Yg = Y(g)
+    if not return_sets:
+        return find_gZ(h, Yg, []) - g.order()
+    # Collect all minimum ZFS of the tilde bipartite graph (size = g.order() + Zell(g)),
+    # then extract only the 'a'-components; each resulting frozenset has size Zell(g).
+    # Tilde bipartite vertices are 2-tuples: ('a', v) ∈ X(g) or ('b', v) ∈ Y(g).
+    all_sets = find_all_gzfs(h, Yg, [])
+    result = sorted(
+        (frozenset(v[1] for v in s if v[0] == 'a') for s in all_sets),
+        key=lambda s: tuple(sorted(s)),
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Demo – run this file directly to see find_Zell in action:
+#   sage diag_anal.py   (or load("diag_anal.py") inside a Sage session)
+# ---------------------------------------------------------------------------
+if __name__ == '__main__':
+    # Example 1: path graph on 5 vertices
+    # Only the two endpoints {0} and {4} are minimum zero forcing sets.
+    g_path = graphs.PathGraph(5)
+    print("=== Path graph P_5 ===")
+    print("find_Zell(g)              ->", find_Zell(g_path))
+    print("find_Zell(g, return_sets=True) ->", find_Zell(g_path, return_sets=True))
+    print()
+
+    # Example 2: complete graph K_3
+    # Every single vertex forces the rest, so all singleton sets are minima.
+    g_k3 = graphs.CompleteGraph(3)
+    print("=== Complete graph K_3 ===")
+    print("find_Zell(g)              ->", find_Zell(g_k3))
+    print("find_Zell(g, return_sets=True) ->", find_Zell(g_k3, return_sets=True))
+    print()
+
+    # Example 3: edge graph K_2 (two vertices connected by one edge)
+    # Both {0} and {1} achieve the minimum.
+    g_k2 = Graph({0: [1], 1: [0]})
+    print("=== Edge graph K_2 ===")
+    print("find_Zell(g)              ->", find_Zell(g_k2))
+    print("find_Zell(g, return_sets=True) ->", find_Zell(g_k2, return_sets=True))
