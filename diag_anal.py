@@ -489,10 +489,11 @@ def find_Zell(g, _base=None, return_sets=False):
         return find_gZ(h, Yg, []) - g.order()
     # Collect all minimum ZFS of the tilde bipartite graph (size = g.order() + Zell(g)),
     # then extract only the 'a'-components; each resulting frozenset has size Zell(g).
+    # Tilde bipartite vertices are 2-tuples: ('a', v) ∈ X(g) or ('b', v) ∈ Y(g).
     all_sets = find_all_gzfs(h, Yg, [])
     result = sorted(
         (frozenset(v[1] for v in s if v[0] == 'a') for s in all_sets),
-        key=lambda s: sorted(s),
+        key=lambda s: tuple(sorted(s)),
     )
     return result
 
