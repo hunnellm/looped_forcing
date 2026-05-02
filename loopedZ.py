@@ -2,7 +2,7 @@ from collections import deque
 
 def gzerosgame(g, F=None, B=None):
 	"""
-	Return the derived set for a given graph g with set of banned edges B and a initial set of vertices. The derived set is given by doing generalized zero forcing process. That is, if y is the only white neighbor of x and xy is not banned, then x could force y into black.
+	Return the derived set for a given graph g with set of banned edges B and a initial set of vertices. The derived set is given by doing generalized zero forcing process. That is, if y is the only whit[...] 
 
 	Input:
 		g: a simple graph
@@ -10,7 +10,7 @@ def gzerosgame(g, F=None, B=None):
 		B: a list of tuples representing banned edges of g
 
 	Output:
-		A set of black vertices when zero forcing process stops.
+	A set of black vertices when zero forcing process stops.
 
 	Examples:
 		sage: gzerosgame(graphs.PathGraph(5),[0])
@@ -62,8 +62,8 @@ def gZ_leq(graph, support=None, bannedset=None, i=None):
 		i: an integer, the function check gZ <= i or not
 
 	Output:
-		if F is a zero forcing set of size i and support is a subset of F, then return F
-		False otherwise
+	if F is a zero forcing set of size i and support is a subset of F, then return F
+	False otherwise
 
 	Examples:
 		sage: gZ_leq(graphs.PathGraph(5),[],[],1)
@@ -102,8 +102,8 @@ def gZ_leq_all(graph, support=None, bannedset=None, i=None):
 		i: an integer; collect every ZFS of exactly this size
 
 	Output:
-		A list of frozensets, each a zero forcing set of size i that includes the support.
-		The list is in the iteration order produced by Subsets (stable/deterministic).
+	A list of frozensets, each a zero forcing set of size i that includes the support.
+	The list is in the iteration order produced by Subsets (stable/deterministic).
 
 	Examples:
 		sage: gZ_leq_all(graphs.PathGraph(5), [], [], 1)
@@ -131,7 +131,7 @@ def gZ_leq_all(graph, support=None, bannedset=None, i=None):
 
 def find_gzfs(graph, support=None, bannedset=None, upper_bound=None, lower_bound=None):
 	"""
-	For a given graph with support and banned set, return the an optimal generalized zero forcing set. If upper_bound is less than the generalized zero forcing number then return ['wrong']. If lower_bound is greater than the generalized zero forcing number then the return value will not be correct
+	For a given graph with support and banned set, return the an optimal generalized zero forcing set. If upper_bound is less than the generalized zero forcing number then return ['wrong']. If lower_boun[...] 
 
 	Input:
 		graph: a simple graph
@@ -141,7 +141,7 @@ def find_gzfs(graph, support=None, bannedset=None, upper_bound=None, lower_bound
 		lower_bound: an integer supposed to be a lower bound of gZ. The two bounds may shorten the computation time. But one may leave it as default value if one is not sure.
 
 	Output:
-		if F is an optimal zero forcing set of size i then return F. If upper_bound is less than the general zero forcing number then return ['wrong'].
+	if F is an optimal zero forcing set of size i then return F. If upper_bound is less than the general zero forcing number then return ['wrong'].
 
 	Examples:
 		sage: find_gzfs(graphs.PathGraph(5))
@@ -197,9 +197,9 @@ def find_all_gzfs(graph, support=None, bannedset=None, upper_bound=None, lower_b
 		lower_bound: an integer, a lower bound for gZ (may shorten computation)
 
 	Output:
-		A list of frozensets, each a minimum zero forcing set.  The list is in the
-		stable iteration order produced by Subsets.  Returns an empty list only if
-		no zero forcing set exists (degenerate/empty graph).
+	A list of frozensets, each a minimum zero forcing set.  The list is in the
+	stable iteration order produced by Subsets.  Returns an empty list only if
+	no zero forcing set exists (degenerate/empty graph).
 
 	Examples:
 		sage: find_all_gzfs(graphs.PathGraph(5))
@@ -308,7 +308,7 @@ def tilde_bipartite(g, I=None):
 		sage: h.vertices()
 		[('a', 0), ('a', 1), ('a', 2), ('a', 3), ('a', 4), ('b', 0), ('b', 1), ('b', 2), ('b', 3), ('b', 4)]
 		sage: h.edges()
-		[(('a', 0), ('b', 1), None), (('a', 1), ('b', 0), None), (('a', 1), ('b', 1), None), (('a', 1), ('b', 2), None), (('a', 2), ('b', 1), None), (('a', 2), ('b', 3), None), (('a', 3), ('b', 2), None), (('a', 3), ('b', 4), None), (('a', 4), ('b', 3), None)]
+		[(('a', 0), ('b', 1), None), (('a', 1), ('b', 0), None), (('a', 1), ('b', 1), None), (('a', 1), ('b', 2), None), (('a', 2), ('b', 1), None), (('a', 2), ('b', 3), None), (('a', 3), ('b', 2), None), ([...
 	"""
 	if I is None:
 		I = []
@@ -348,12 +348,13 @@ def find_EZ(g,bound=None):
 		h = _tilde_bipartite_with_I(base, list(I))
 		leq=gZ_leq(h,Yg,[],e) # this avoid abundant computation
 		if leq==False:
-			e=find_gZ(h,Yg,[],gZ_bound,e+1)
+		e=find_gZ(h,Yg,[],gZ_bound,e+1)
 			# in this case, we already know e+1-order<=gZ-order<=bound and so e+1<=gZ<=gZ_bound
 		if e==gZ_bound:
 			break
 	return e-order # EZ=max-order
 	
+
 def bridged_edges(J):
     """
     For a give subset J of vertices, return the corresponding edges between X and Y in tilde_bipartite.
@@ -362,14 +363,14 @@ def bridged_edges(J):
         J: a subset of vertices.
         
     Output:
-        [(("a",j),("b",j)) for j in J].
+        [("a",j),("b",j)) for j in J].
         
     Examples:
         sage: J=[1,3,5];
         sage: print bridged_edges(J);
         [(('a', 1), ('b', 1)), (('a', 3), ('b', 3)), (('a', 5), ('b', 5))]
     """        
-    return [(("a",j),("b",j)) for j in J];
+    return [("a",j),("b",j)) for j in J];
 
 def find_loopedZ(g, I, J=None, _base=None):
     """
@@ -446,7 +447,7 @@ def diagonal_analysis(g, Z=None):
             diag[v] = -1
     return diag
 
-def find_Zell(g, _base=None, return_sets=False):
+def find_Zell(g, _base=None, return_sets=True):
     """
     Return the zero forcing number of the looped graph obtained by placing
     (exactly one) loop on every vertex of g.
@@ -457,28 +458,28 @@ def find_Zell(g, _base=None, return_sets=False):
                for reuse across multiple calls.
         return_sets: bool (default False).
             * False  – return the zero forcing number as an integer (original behaviour).
-            * True   – return a sorted list of frozensets.  Each frozenset contains the
+            * True   – return a sorted list of lists.  Each inner list contains the
                        g-vertex indices (the 'a'-component) present in one minimum zero
                        forcing set of the associated tilde bipartite graph.  That is,
-                       every frozenset has exactly Zell(g) elements, and the list
+                       every inner list has exactly Zell(g) elements, and the outer list
                        contains every distinct such set.
 
     Output:
         int  when return_sets is False  – the zero forcing number Z_ell(g).
-        list when return_sets is True   – a sorted list of frozensets of g-vertex
-             indices, one frozenset per minimum zero forcing set.
+        list when return_sets is True   – a sorted list of lists of g-vertex
+             indices, one list per minimum zero forcing set.
 
     Examples:
         sage: g = graphs.PathGraph(5)
         sage: find_Zell(g)
         1
         sage: find_Zell(g, return_sets=True)
-        [frozenset({0}), frozenset({4})]
+        [[0], [4]]
         sage: g2 = Graph({0: [1], 1: [0]})
         sage: find_Zell(g2)
         1
         sage: find_Zell(g2, return_sets=True)
-        [frozenset({0}), frozenset({1})]
+        [[0], [1]]
     """
     if _base is None:
         _base = _tilde_bipartite_base(g)
@@ -488,13 +489,15 @@ def find_Zell(g, _base=None, return_sets=False):
     if not return_sets:
         return find_gZ(h, Yg, []) - g.order()
     # Collect all minimum ZFS of the tilde bipartite graph (size = g.order() + Zell(g)),
-    # then extract only the 'a'-components; each resulting frozenset has size Zell(g).
+    # then extract only the 'a'-components; each resulting list has size Zell(g).
     # Tilde bipartite vertices are 2-tuples: ('a', v) ∈ X(g) or ('b', v) ∈ Y(g).
     all_sets = find_all_gzfs(h, Yg, [])
     result = sorted(
-        (frozenset(v[1] for v in s if v[0] == 'a') for s in all_sets),
-        key=lambda s: tuple(sorted(s)),
+        ([v[1] for v in s if v[0] == 'a'] for s in all_sets),
+        key=lambda lst: tuple(sorted(lst)),
     )
+    # Ensure deterministic ordering within each set
+    result = [sorted(lst) for lst in result]
     return result
 
 
