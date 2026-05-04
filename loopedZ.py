@@ -308,7 +308,7 @@ def Zplus_game(g,B):
     return derived_set;  
     
 
-"""
+
 def pt_plus(G,S):
     """
     pt_plus(G,S) returns the propagation time for
@@ -525,7 +525,7 @@ def full_pt_plus_int(G):
     if D == 0:
         return True
     return False
-"""
+	
 
 def gzerosgame(g, F=None, B=None):
 	"""
