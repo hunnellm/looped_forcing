@@ -1,6 +1,176 @@
 from collections import deque
 
+def find_Z(g, support=None, ban=None, return_sets=False):
+    """
+    Compute the minimum size of a zero forcing set for CCR-Z (Z_game).
 
+    Input:
+        g: a simple graph
+        support: optional list/set of vertices that must be included in every candidate set
+        ban: optional list/set of banned vertices (passed to Z_game); banned vertices
+             cannot make a force but can still be forced
+        return_sets: bool (default False)
+            * False – return the minimum size (an int)
+            * True  – return a sorted list of lists, each inner list a minimum ZFS
+
+    Output:
+        int  when return_sets is False
+        list when return_sets is True
+
+    Examples:
+        sage: g = graphs.PathGraph(5)
+        sage: find_Z(g)
+        1
+        sage: find_Z(g, return_sets=True)
+        [[0], [4]]
+        sage: g = graphs.CompleteGraph(3)
+        sage: find_Z(g)
+        2
+    """
+    if support is None:
+        support = []
+    if ban is None:
+        ban = []
+    support_set = set(support)
+    V = list(g.vertices())
+    # Early impossible case
+    if not support_set.issubset(set(V)):
+        return [] if return_sets else False
+
+    # Try sizes from |support| up to |V|
+    for k in range(len(support_set), len(V) + 1):
+        results = []
+        for subset in Subsets([v for v in V if v not in support_set], k - len(support_set)):
+            B = list(support_set.union(subset))
+            derived = Z_game(g, B, ban=ban)
+            if len(set(derived)) == g.order():
+                if not return_sets:
+                    return k
+                results.append(sorted(B))
+        if return_sets and results:
+            # Sort deterministically
+            results = sorted(results, key=lambda lst: tuple(lst))
+            return results
+    return [] if return_sets else False
+
+
+def find_Zplus(g, support=None, return_sets=False):
+    """
+    Compute the minimum size of a zero forcing set for CCR-Zplus (Zplus_game).
+
+    Input:
+        g: a simple graph
+        support: optional list/set of vertices that must be included in every candidate set
+        return_sets: bool (default False)
+            * False – return the minimum size (an int)
+            * True  – return a sorted list of lists, each inner list a minimum Zplus ZFS
+
+    Output:
+        int  when return_sets is False
+        list when return_sets is True
+
+    Examples:
+        sage: g = graphs.PathGraph(5)
+        sage: find_Zplus(g)
+        1
+        sage: find_Zplus(g, return_sets=True)
+        [[0], [4]]
+        sage: g = graphs.CompleteGraph(4)
+        sage: find_Zplus(g)
+        3
+    """
+    if support is None:
+        support = []
+    support_set = set(support)
+    V = list(g.vertices())
+    if not support_set.issubset(set(V)):
+        return [] if return_sets else False
+
+    for k in range(len(support_set), len(V) + 1):
+        results = []
+        for subset in Subsets([v for v in V if v not in support_set], k - len(support_set)):
+            B = list(support_set.union(subset))
+            derived = Zplus_game(g, B)
+            if len(set(derived)) == g.order():
+                if not return_sets:
+                    return k
+                results.append(sorted(B))
+        if return_sets and results:
+            results = sorted(results, key=lambda lst: tuple(lst))
+            return results
+    return [] if return_sets else False
+
+
+def find_Zell_zero(g, support=None, ban=None, return_sets=False):
+    """
+    Compute the minimum size of a zero forcing set for CCR-Zell (Zell_game) (i.e. no loops on isolates).
+
+    Note: Zell_game internally deletes isolated vertices from a copy of g (since they
+    cannot be affected by forces). A set B "forces all vertices" of the original g iff:
+      - every isolated vertex of g is in B, and
+      - Zell_game forces all non-isolated vertices.
+
+    Input:
+        g: a simple graph
+        support: optional list/set of vertices that must be included in every candidate set
+        ban: optional list/set of banned vertices (passed to Zell_game)
+        return_sets: bool (default False)
+            * False – return the minimum size (an int)
+            * True  – return a sorted list of lists, each inner list a minimum Zell ZFS
+
+    Output:
+        int  when return_sets is False
+        list when return_sets is True
+
+    Examples:
+        sage: g = graphs.PathGraph(5)
+        sage: find_Zell_zero(g)
+        1
+        sage: find_Zell_zero(g, return_sets=True)
+        [[0], [4]]
+        sage: g = graphs.PathGraph(3)
+        sage: g.add_vertex(3)  # isolated
+        sage: find_Zell_zero(g)
+        2
+    """
+    if support is None:
+        support = []
+    if ban is None:
+        ban = []
+    V = list(g.vertices())
+    iso = {v for v in V if g.degree(v) == 0}
+
+    # Must include all isolated vertices to "color all vertices" in original g
+    support_set = set(support).union(iso)
+    if not support_set.issubset(set(V)):
+        return [] if return_sets else False
+
+    # Build the non-isolated induced subgraph; Zell_game will do the same deletion,
+    # but we need its order for the success criterion.
+    non_iso = [v for v in V if v not in iso]
+    if not non_iso:
+        # Graph is entirely isolated vertices: the only way to color all is take all of them.
+        allv = sorted(V)
+        return [allv] if return_sets else len(V)
+
+    h = g.subgraph(non_iso)
+    target = h.order()
+
+    for k in range(len(support_set), len(V) + 1):
+        results = []
+        for subset in Subsets([v for v in V if v not in support_set], k - len(support_set)):
+            B = list(support_set.union(subset))
+            derived = Zell_game(g, B, ban=ban)
+            # derived may include isolated vertices if they were in B; remove them for the check
+            forced_non_iso = set(derived).intersection(set(non_iso))
+            if len(forced_non_iso) == target:
+                if not return_sets:
+                    return k
+                results.append(sorted(B))
+        if return_sets and results:
+            results = sorted(results, key=lambda lst: tuple(lst))
+            return results
+    return [] if return_sets else False
 
 
 def Z_game(g,B,ban=[]):
