@@ -595,7 +595,7 @@ def bridged_edges(J):
         sage: print bridged_edges(J);
         [(('a', 1), ('b', 1)), (('a', 3), ('b', 3)), (('a', 5), ('b', 5))]
     """        
-    return [("a",j),("b",j)) for j in J];
+    return [("a",j),("b",j) for j in J];
 
 def find_loopedZ(g, I, J=None, _base=None):
     """
