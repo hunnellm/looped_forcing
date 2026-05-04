@@ -2,6 +2,7 @@ from collections import deque
 
 
 
+
 def Z_game(g,B,ban=[]):
     """
     Input:
