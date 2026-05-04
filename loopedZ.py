@@ -1055,3 +1055,53 @@ if __name__ == '__main__':
     print("=== Edge graph K_2 ===")
     print("find_Zell(g)              ->", find_Zell(g_k2))
     print("find_Zell(g, return_sets=True) ->", find_Zell(g_k2, return_sets=True))
+
+from itertools import permutations
+
+def glued_graph_from_phi(G, H, phi, prefix_G="G:", prefix_H="H:"):
+    VG = list(G.vertices())
+    VH = list(H.vertices())
+
+    if set(phi.keys()) != set(VG):
+        raise ValueError("phi must be defined on all vertices of G.")
+    if set(phi.values()) != set(VH):
+        raise ValueError("phi values must be exactly the vertex set of H.")
+
+    g = Graph()
+    mapG = {u: f"{prefix_G}{u}" for u in VG}
+    mapH = {v: f"{prefix_H}{v}" for v in VH}
+
+    g.add_vertices(list(mapG.values()))
+    g.add_vertices(list(mapH.values()))
+    g.add_edges([(mapG[u], mapG[v]) for (u, v, _) in G.edges(labels=True)])
+    g.add_edges([(mapH[u], mapH[v]) for (u, v, _) in H.edges(labels=True)])
+
+    # glue edges u(G) -- phi(u)(H)
+    g.add_edges([(mapG[u], mapH[phi[u]]) for u in VG])
+    return g
+
+
+def all_bijections_VG_to_VH(G, H):
+    VG = list(G.vertices())
+    VH = list(H.vertices())
+    if len(VG) != len(VH):
+        raise ValueError("Need |V(G)| = |V(H)| to have bijections.")
+    for perm in permutations(VH):
+        yield dict(zip(VG, perm))
+
+
+def max_Zell_over_all_bijections(G, H, *, return_argmax=False):
+    """
+    Returns max_{bijections phi} find_Zell(glue(G,H,phi)).
+    If return_argmax=True, returns (max_value, phi_that_achieves_it).
+    """
+    best_val = None
+    best_phi = None
+    # optional speed-up: reuse base bipartite for each glued graph (but glued changes each time)
+    for phi in all_bijections_VG_to_VH(G, H):
+        glued = glued_graph_from_phi(G, H, phi)
+        val = find_Zell(glued, return_sets=False)  # integer
+        if best_val is None or val > best_val:
+            best_val = val
+            best_phi = phi
+    return (best_val, best_phi) if return_argmax else best_val
