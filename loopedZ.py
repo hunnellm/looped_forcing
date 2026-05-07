@@ -974,7 +974,7 @@ def diagonal_analysis(g, Z=None):
             diag[v] = -1
     return diag
 
-def find_Zell(g, _base=None, return_sets=True):
+def find_Zell(g, _base=None, return_sets=False):
     """
     Return the zero forcing number of the looped graph obtained by placing
     (exactly one) loop on every vertex of g.
