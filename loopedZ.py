@@ -1107,20 +1107,33 @@ def max_Zell_over_all_bijections(G, H, *, return_argmax=False):
     return (best_val, best_phi) if return_argmax else best_val
 
 def looped_maxnull_bounds(g):
-    minbound = 0
-    maxbound=g.order()
-    #Z=find_Z(g)
-    #Zhat= find_EZ(g)
+    """
+    Return lower/upper bounds for looped max nullity:
+      lower = max(kappa, deltaC, ncc)
+      upper = Zell
+
+    Robust to helper functions returning None.
+    """
+    n = g.order()
     Zell = find_Zell(g)
+
     kappa = g.vertex_connectivity()
+
     deltaC = deltaCeiling(g)
-    ncc = g.order()-len(edge_clique_cover_minimum(g))
-    minbound = max(kappa,deltaC,ncc)
-    maxbound = Zell
-    if minbound==maxbound:
-        return [minbound]
+    if deltaC is None:
+        deltaC = 0
+
+    ecc = edge_clique_cover_minimum(g)
+    # If no cover returned (e.g. unexpected None), fall back to weakest safe bound.
+    if ecc is None:
+        ncc = 0
     else:
-        return [minbound,maxbound]
+        ncc = n - len(ecc)
+
+    minbound = max(kappa, deltaC, ncc)
+    maxbound = Zell
+
+    return [minbound] if minbound == maxbound else [minbound, maxbound]
 
 def edge_clique_cover_minimum(self, bound=None):
     """
