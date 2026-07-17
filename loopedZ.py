@@ -1256,6 +1256,328 @@ def deltaCeiling(gph):
         for com in gph.connected_components_subgraphs():
             max_dC=max(max_dC,deltaCeiling(com));
         return max_dC;
+
+# ===========================================================================
+# Maximum-nullity witness construction (Groebner + robust fallback)
+# Drop-in block for loopedZ.py
+# ===========================================================================
+
+from itertools import combinations
+from sage.all import QQ, Matrix, PolynomialRing
+
+
+def _graph_pattern_symbolic_matrix_poly(G, field=QQ):
+    """
+    Build symbolic symmetric matrix A over polynomial ring with graph sparsity:
+      A[i,j] = 0 for non-edges (i!=j)
+      A[i,j] = e_{i,j} for edges (i<j, symmetric)
+      A[i,i] = d_i
+    Returns:
+      H, R, A, diag_vars, edge_vars, vars_all
+    where H is relabeled to vertices 0..n-1.
+    """
+    H = G.copy()
+    H.relabel()
+    n = H.order()
+
+    names = [f"d_{i}" for i in range(n)]
+    edge_keys = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            if H.has_edge(i, j):
+                edge_keys.append((i, j))
+                names.append(f"e_{i}_{j}")
+
+    R = PolynomialRing(field, names, order="degrevlex")
+    gens = list(R.gens())
+
+    diag_vars = gens[:n]
+    edge_vars = {}
+    p = n
+    for key in edge_keys:
+        edge_vars[key] = gens[p]
+        p += 1
+
+    A = Matrix(R, n, n, 0)
+    for i in range(n):
+        A[i, i] = diag_vars[i]
+    for i in range(n):
+        for j in range(i + 1, n):
+            if (i, j) in edge_vars:
+                x = edge_vars[(i, j)]
+                A[i, j] = x
+                A[j, i] = x
+            else:
+                A[i, j] = 0
+                A[j, i] = 0
+
+    return H, R, A, diag_vars, edge_vars, gens
+
+
+def _all_k_minors(A, k):
+    """
+    All kxk minors of square matrix A.
+    """
+    n = A.nrows()
+    if k < 0 or k > n:
+        return []
+    if k == 0:
+        return [A.base_ring().one()]
+    out = []
+    idx = range(n)
+    for I in combinations(idx, k):
+        for J in combinations(idx, k):
+            out.append(A.matrix_from_rows_and_columns(I, J).det())
+    return out
+
+
+def _extract_point_from_lex_groebner(Gb, R, vars_order):
+    """
+    Conservative extractor for lex Groebner basis:
+    repeatedly solve linear univariate equations after substitution.
+    Returns dict var->value or None.
+    """
+    sol = {}
+    basis = [R(f) for f in Gb if f != 0]
+
+    changed = True
+    while changed:
+        changed = False
+        for f in basis:
+            g = f.subs(sol) if sol else f
+            if g == 0:
+                continue
+
+            rem = [v for v in vars_order if v not in sol and g.degree(v) > 0]
+            if len(rem) != 1:
+                continue
+            v = rem[0]
+            if g.degree(v) != 1:
+                continue
+
+            a = g.coefficient({v: 1})
+            b = g.subs({v: 0})
+            if a == 0:
+                continue
+
+            sol[v] = -b / a
+            changed = True
+
+    if len(sol) != len(vars_order):
+        return None
+
+    for f in basis:
+        if f.subs(sol) != 0:
+            return None
+    return sol
+
+
+def _repair_nonzero_diagonal_preserve_rank(M, max_tries=40, step_values=None):
+    """
+    Try to make every diagonal entry nonzero by diagonal perturbations while
+    preserving rank(M). Returns repaired matrix or None.
+    """
+    if step_values is None:
+        step_values = [1, -1, 2, -2, 3, -3, QQ(1, 2), QQ(-1, 2), QQ(3, 2), QQ(-3, 2)]
+
+    A = Matrix(QQ, M)
+    target_rank = A.rank()
+    n = A.nrows()
+
+    if all(A[i, i] != 0 for i in range(n)):
+        return A
+
+    for _ in range(max_tries):
+        changed = False
+        for i in range(n):
+            if A[i, i] != 0:
+                continue
+            fixed = False
+            for t in step_values:
+                B = Matrix(QQ, A)
+                B[i, i] += QQ(t)
+                if B[i, i] != 0 and B.rank() == target_rank:
+                    A = B
+                    changed = True
+                    fixed = True
+                    break
+            if not fixed:
+                pass
+
+        if all(A[i, i] != 0 for i in range(n)):
+            return A
+        if not changed:
+            break
+
+    return None
+
+
+def max_nullity_witness_matrix_groebner(
+    G,
+    target_nullity=None,
+    require_nz_diag=False,
+    field=QQ,
+    random_fallback_trials=3000,
+    random_range=(-5, 5),
+    return_diagnostics=False,
+):
+    """
+    Construct a symmetric matrix matching G's pattern and (attempt to) maximize nullity.
+
+    Constraints:
+      - offdiag non-edge => 0
+      - offdiag edge     => nonzero
+      - diagonal free; if require_nz_diag=True then diagonal must be nonzero
+
+    Returns dict:
+      {
+        'matrix': Matrix or None,
+        'rank': int or None,
+        'nullity': int or None,
+        'assignment': dict or None,
+        'method': 'groebner',
+        'diagnostics': ... (optional)
+      }
+    """
+    H, R0, A0, diag_vars0, edge_vars0, vars0 = _graph_pattern_symbolic_matrix_poly(G, field=field)
+    n = H.order()
+
+    diagnostics = {"attempts": []}
+    best = {"matrix": None, "rank": None, "nullity": -1, "assignment": None, "method": "groebner"}
+
+    # Search low rank first => high nullity first
+    for r in range(0, n + 1):
+        k = r + 1
+        if k > n:
+            continue
+
+        minors0 = _all_k_minors(A0, k)
+
+        # Lex ring for elimination/extraction
+        R = PolynomialRing(field, [str(v) for v in vars0], order="lex")
+        gens = list(R.gens())
+        vmap = {str(vars0[i]): gens[i] for i in range(len(vars0))}
+        sub_map = {vars0[i]: vmap[str(vars0[i])] for i in range(len(vars0))}
+
+        A = Matrix(R, n, n, lambda i, j: R(A0[i, j].subs(sub_map)))
+        eqs = [R(m.subs(sub_map)) for m in minors0]
+
+        I = R.ideal(eqs)
+        att = {"rank_bound": r, "num_eqs": len(eqs)}
+
+        try:
+            Glex = I.groebner_basis()
+            att["groebner_ok"] = True
+            att["groebner_len"] = len(Glex)
+        except Exception as e:
+            att["groebner_ok"] = False
+            att["groebner_error"] = str(e)
+            diagnostics["attempts"].append(att)
+            continue
+
+        if R.one() in Glex:
+            att["inconsistent"] = True
+            diagnostics["attempts"].append(att)
+            continue
+
+        sol = _extract_point_from_lex_groebner(Glex, R, gens)
+
+        # Robust randomized fallback on minors equations
+        if sol is None and random_fallback_trials > 0:
+            import random
+            lo, hi = random_range
+            nz_choices = [x for x in range(lo, hi + 1) if x != 0] or [-1, 1]
+
+            edge_names = {f"e_{i}_{j}" for (i, j) in edge_vars0.keys()}
+            diag_names = {f"d_{i}" for i in range(n)}
+
+            for _ in range(random_fallback_trials):
+                cand = {}
+                for v in gens:
+                    sv = str(v)
+                    if sv in edge_names or (require_nz_diag and sv in diag_names):
+                        cand[v] = random.choice(nz_choices)
+                    else:
+                        cand[v] = random.randint(lo, hi)
+
+                ok = True
+                for f in eqs:
+                    if f.subs(cand) != 0:
+                        ok = False
+                        break
+                if ok:
+                    sol = cand
+                    att["used_random_fallback"] = True
+                    break
+
+        if sol is None:
+            att["solution_found"] = False
+            diagnostics["attempts"].append(att)
+            continue
+
+        M = Matrix(QQ, n, n, lambda i, j: QQ(A[i, j].subs(sol)))
+
+        # Repair diagonal if requested
+        if require_nz_diag and any(M[i, i] == 0 for i in range(n)):
+            repaired = _repair_nonzero_diagonal_preserve_rank(M)
+            if repaired is not None:
+                M = repaired
+
+        # Validate pattern
+        valid = True
+        for i in range(n):
+            if require_nz_diag and M[i, i] == 0:
+                valid = False
+                break
+            for j in range(i + 1, n):
+                if H.has_edge(i, j):
+                    if M[i, j] == 0:
+                        valid = False
+                        break
+                else:
+                    if M[i, j] != 0:
+                        valid = False
+                        break
+            if not valid:
+                break
+
+        rr = int(M.rank())
+        nn = n - rr
+
+        att["solution_found"] = True
+        att["valid_pattern"] = valid
+        att["rank"] = rr
+        att["nullity"] = nn
+        diagnostics["attempts"].append(att)
+
+        if valid and nn > best["nullity"]:
+            best = {"matrix": M, "rank": rr, "nullity": nn, "assignment": sol, "method": "groebner"}
+
+        # early stop if target reached
+        if valid and target_nullity is not None and nn >= target_nullity:
+            out = best
+            if return_diagnostics:
+                out = dict(out)
+                out["diagnostics"] = diagnostics
+            return out
+
+        # if this rank bound is achieved by a valid point, that's usually near-optimal in this search order
+        if valid and target_nullity is None:
+            out = best
+            if return_diagnostics:
+                out = dict(out)
+                out["diagnostics"] = diagnostics
+            return out
+
+    if best["matrix"] is None:
+        out = {"matrix": None, "rank": None, "nullity": None, "assignment": None, "method": "groebner"}
+    else:
+        out = best
+
+    if return_diagnostics:
+        out = dict(out)
+        out["diagnostics"] = diagnostics
+    return out    
     max_dC=delta;
     for e in gph.edges():
         max_dC=max(max_dC,deltaCeiling(contract_edge(gph,e)));
