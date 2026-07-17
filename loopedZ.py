@@ -1582,3 +1582,95 @@ def max_nullity_witness_matrix_groebner(
     for e in gph.edges():
         max_dC=max(max_dC,deltaCeiling(contract_edge(gph,e)));
     return max_dC;    
+
+def max_nullity_witness_close_to_Zell(
+    G,
+    require_nz_diag=False,
+    zell_target=None,
+    rounds=6,
+    initial_trials=1500,
+    trial_growth=2,
+    random_range=(-5, 5),
+    return_diagnostics=False,
+):
+    """
+    Wrapper around max_nullity_witness_matrix_groebner that tries to get nullity
+    as close as possible to find_Zell(G), preferably equal.
+
+    Strategy:
+      1) Compute target = find_Zell(G) unless provided as zell_target.
+      2) Run Groebner+random fallback in multiple rounds with increasing trials.
+      3) Keep the best valid witness (max nullity).
+      4) Early stop when nullity == target.
+
+    Returns:
+      dict with:
+        matrix, rank, nullity, target_nullity, gap_to_target, method,
+        assignment, diagnostics(optional)
+    """
+    target = find_Zell(G) if zell_target is None else zell_target
+
+    best = {
+        "matrix": None,
+        "rank": None,
+        "nullity": -1,
+        "assignment": None,
+        "method": "groebner-wrapper",
+    }
+    all_diags = []
+
+    trials = int(initial_trials)
+    for r in range(rounds):
+        res = max_nullity_witness_matrix_groebner(
+            G,
+            target_nullity=target,                 # early stop if hit
+            require_nz_diag=require_nz_diag,
+            random_fallback_trials=trials,
+            random_range=random_range,
+            return_diagnostics=return_diagnostics,
+        )
+
+        if return_diagnostics and "diagnostics" in res:
+            all_diags.append({
+                "round": r + 1,
+                "trials": trials,
+                "diagnostics": res["diagnostics"],
+            })
+
+        if res.get("matrix", None) is not None:
+            nn = int(res["nullity"])
+            if nn > best["nullity"]:
+                best = {
+                    "matrix": res["matrix"],
+                    "rank": int(res["rank"]),
+                    "nullity": nn,
+                    "assignment": res.get("assignment"),
+                    "method": "groebner-wrapper",
+                }
+
+            # perfect match
+            if nn == target:
+                break
+
+        trials *= int(trial_growth)
+
+    # finalize
+    if best["matrix"] is None:
+        out = {
+            "matrix": None,
+            "rank": None,
+            "nullity": None,
+            "target_nullity": int(target),
+            "gap_to_target": None,
+            "method": "groebner-wrapper",
+            "assignment": None,
+        }
+    else:
+        out = dict(best)
+        out["target_nullity"] = int(target)
+        out["gap_to_target"] = int(target) - int(best["nullity"])
+
+    if return_diagnostics:
+        out["round_diagnostics"] = all_diags
+    return out
+    
