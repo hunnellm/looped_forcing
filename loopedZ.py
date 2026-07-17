@@ -1105,3 +1105,158 @@ def max_Zell_over_all_bijections(G, H, *, return_argmax=False):
             best_val = val
             best_phi = phi
     return (best_val, best_phi) if return_argmax else best_val
+
+def looped_maxnull_bounds(g):
+    minbound = 0
+    maxbound=g.order()
+    #Z=find_Z(g)
+    #Zhat= find_EZ(g)
+    Zell = find_Zell(g)
+    kappa = g.vertex_connectivity()
+    deltaC = deltaCeiling(g)
+    ncc = g.order()-len(edge_clique_cover_minimum(g))
+    minbound = max(kappa,deltaC,ncc)
+    maxbound = Zell
+    if minbound==maxbound:
+        return [minbound]
+    else:
+        return [minbound,maxbound]
+
+def edge_clique_cover_minimum(self, bound=None):
+    """
+    Returns an minimum edge clique cover for the graph if the
+    number of covering cliques is at most ``bound``; otherwise,
+    returns ``None``.
+
+    An edge clique cover is a set of cliques which contain all of
+    the edges of the graph.
+    
+    .. note::
+        This function assumes self is connected.
+
+    :param bound: the maximum number of cliques to consider in an
+       edge clique cover
+
+    :return: If a minimum edge clique cover is found that has at
+        most ``bound`` cliques, the edge clique cover is returned
+        as a list of lists, each sublist being the vertices of a
+        clique. If a clique cover from this function requires more
+        than ``bound`` cliques, ``None`` is returned.
+
+    EXAMPLES::
+
+        sage: graphs.PathGraph(3).edge_clique_cover_minimum()
+        [[0, 1], [1, 2]]
+        sage: graphs.CompleteGraph(5).edge_clique_cover_minimum()
+        [[0, 1, 2, 3, 4]]
+        sage: graphs.HouseGraph().edge_clique_cover_minimum()
+        [[2, 3, 4], [0, 1], [0, 2], [1, 3]]
+        sage: graphs.PetersenGraph().edge_clique_cover_minimum(bound=4)
+    """
+    from sage.all import ceil, Combinations
+    # Take care of trivial case
+    if self.size() == 0:
+        return []
+
+    max_cliques=self.cliques_maximal()
+    max_cliques.sort(key=len)
+    largest_clique_vertices = len(max_cliques[-1])
+    max_cliques = [sorted(clique) for clique in max_cliques]
+    largest_clique_edges = largest_clique_vertices \
+                           *(largest_clique_vertices-1)/2
+    edges_of_graph=self.edges(labels=False)
+    num_edges = self.size()
+
+    mandatory_cliques=[]
+
+
+    for v in self.vertices():
+        # If v is contained in only one clique, then that clique must
+        # be in the clique cover
+        cliques_containing_v = [c for c in max_cliques if v in c]
+        if len(cliques_containing_v)==1 \
+                and (cliques_containing_v[0] not in mandatory_cliques):
+            mandatory_cliques.append(cliques_containing_v[0])
+    for e in self.edges():
+        # If e is contained in only one clique, then that clique must
+        # be in the clique cover
+        cliques_containing_e = [c for c in max_cliques 
+                                if e[0] in c and e[1] in c]
+        if len(cliques_containing_e)==1 \
+                and (cliques_containing_e[0] not in mandatory_cliques):
+            mandatory_cliques.append(cliques_containing_e[0])
+
+    # Check to see if mandatory_cliques contains a clique cover
+    edges_in_set_of_cliques = set([])
+    for clique in mandatory_cliques:
+        edges_in_clique = [(clique[i], clique[j]) 
+                           for i in range(len(clique)) 
+                           for j in range(i+1,len(clique))]
+        edges_in_set_of_cliques.update(set(edges_in_clique))
+    if len(edges_in_set_of_cliques) == num_edges:
+        if bound is None or len(mandatory_cliques) <= bound:
+            return mandatory_cliques
+        else:
+            # There are too many cliques.  Return None to be
+            # consistent with the documentation, even though we
+            # actually know the clique cover number (and it is greater
+            # than bound).
+            return None
+
+    max_cliques = [c for c in max_cliques if c not in mandatory_cliques]
+    if bound==None:
+        stopping_point=len(max_cliques)
+    else:
+        stopping_point=min(len(max_cliques),bound-len(mandatory_cliques))
+
+    starting_point = max(1,ceil(float(num_edges) / largest_clique_edges) \
+                             - len(mandatory_cliques))
+    for i in range(starting_point,stopping_point+1):
+        for set_of_cliques in Combinations(max_cliques,i):
+            edges_in_set_of_cliques = set([])
+            for clique in set_of_cliques+mandatory_cliques:
+                edges_in_clique = [(clique[i], clique[j]) 
+                                   for i in range(len(clique)) 
+                                   for j in range(i+1,len(clique))]
+                edges_in_set_of_cliques.update(set(edges_in_clique))
+            if len(edges_in_set_of_cliques) == num_edges:
+                return set_of_cliques+mandatory_cliques
+    return None
+
+def contract_edge(gph,e):
+    if gph.has_edge(e)==False:
+        raise ValueError;
+    ngh1=gph.neighbors(e[0]);
+    ngh2=gph.neighbors(e[1]);
+    h=gph.copy();
+    h.delete_vertices([e[0],e[1]]);
+    try_again=True;
+    i=0;
+    while try_again:
+        i+=1;
+        if h.has_vertex(i)==False:
+            h.add_vertex(i);
+            try_again=False;
+    h.add_edges([(i,j) for j in set(ngh1).union(set(ngh2)).difference(set([e[0],e[1]]))]);
+    return h;
+    
+
+def deltaCeiling(gph):
+    gph_order=gph.order();
+    delta=min(gph.degree());
+    if delta==gph_order-1:
+        return delta;
+    name=gph.canonical_label().graph6_string();
+    try:
+        return dC_dic[gph_order][name];
+    except: 
+        pass         
+    if gph.is_connected()==False:
+        max_dC=delta;
+        for com in gph.connected_components_subgraphs():
+            max_dC=max(max_dC,deltaCeiling(com));
+        return max_dC;
+    max_dC=delta;
+    for e in gph.edges():
+        max_dC=max(max_dC,deltaCeiling(contract_edge(gph,e)));
+    return max_dC;    
