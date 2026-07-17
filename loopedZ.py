@@ -1838,3 +1838,147 @@ def max_nullity_witness_factorized(
     if return_diagnostics:
         best["diagnostics"] = diag
     return best
+
+def max_nullity_witness_factorized(
+    G,
+    target_nullity=None,
+    require_nz_diag=False,
+    max_drop=8,
+    attempts_per_rank=30,
+    random_range=(-5, 5),
+    seed=None,
+    return_diagnostics=False,
+):
+    r"""
+    Find a symmetric matrix A with graph pattern via factorization A = U*D*U^T.
+
+    Pattern:
+      - A[i,j] = 0 for i!=j and non-edge
+      - A[i,j] != 0 for i!=j and edge
+      - if require_nz_diag: A[i,i] != 0
+
+    Optimization objective:
+      get nullity(A) as close as possible to target_nullity (default find_Zell(G))
+      by trying low ranks r = n-target, n-(target-1), ... (increasing as needed).
+
+    Returns dict:
+      matrix, rank, nullity, target_nullity, gap_to_target, method, diagnostics(optional)
+    """
+    import random
+    from sage.all import QQ, Matrix
+
+    if seed is not None:
+        random.seed(seed)
+
+    H = G.copy()
+    H.relabel()
+    n = H.order()
+
+    target = find_Zell(H) if target_nullity is None else int(target_nullity)
+    lo, hi = random_range
+    vals = [x for x in range(lo, hi + 1) if x != 0]
+    if not vals:
+        vals = [-1, 1]
+
+    # Build edge/non-edge index lists
+    edge_pairs = []
+    nonedge_pairs = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            if H.has_edge(i, j):
+                edge_pairs.append((i, j))
+            else:
+                nonedge_pairs.append((i, j))
+
+    best = {
+        "matrix": None,
+        "rank": None,
+        "nullity": -1,
+        "target_nullity": target,
+        "gap_to_target": None,
+        "method": "factorized",
+    }
+    diag = {"trials": []}
+
+    # desired nullity target, then relax downward
+    for drop in range(max_drop + 1):
+        desired_nullity = target - drop
+        if desired_nullity < 0:
+            break
+        r = n - desired_nullity
+        if r < 0 or r > n:
+            continue
+
+        for t in range(attempts_per_rank):
+            # Random U (n x r), D diagonal invertible-ish (r x r)
+            if r == 0:
+                # only zero matrix, useful only for edgeless graph
+                A = Matrix(QQ, n, n, 0)
+            else:
+                U = Matrix(QQ, n, r, lambda i, j: random.choice(vals))
+                Ddiag = [QQ(random.choice(vals)) for _ in range(r)]
+                D = Matrix(QQ, r, r, 0)
+                for k in range(r):
+                    D[k, k] = Ddiag[k]
+                A = U * D * U.transpose()
+
+            # Enforce zero on non-edges by rejection
+            ok = True
+            for (i, j) in nonedge_pairs:
+                if A[i, j] != 0:
+                    ok = False
+                    break
+            if not ok:
+                if return_diagnostics:
+                    diag["trials"].append({"rank_target": r, "attempt": t + 1, "status": "reject_nonedge"})
+                continue
+
+            # Enforce nonzero on edges
+            for (i, j) in edge_pairs:
+                if A[i, j] == 0:
+                    ok = False
+                    break
+            if not ok:
+                if return_diagnostics:
+                    diag["trials"].append({"rank_target": r, "attempt": t + 1, "status": "reject_edge_zero"})
+                continue
+
+            # Diagonal nonzero condition if requested
+            if require_nz_diag:
+                if any(A[i, i] == 0 for i in range(n)):
+                    # try your existing repair if available
+                    try:
+                        repaired = _repair_nonzero_diagonal_preserve_rank(A)
+                    except Exception:
+                        repaired = None
+                    if repaired is None or any(repaired[i, i] == 0 for i in range(n)):
+                        if return_diagnostics:
+                            diag["trials"].append({"rank_target": r, "attempt": t + 1, "status": "reject_diag_zero"})
+                        continue
+                    A = repaired
+
+            rr = int(A.rank())
+            nn = n - rr
+
+            if return_diagnostics:
+                diag["trials"].append({
+                    "rank_target": r, "attempt": t + 1, "status": "accept",
+                    "rank": rr, "nullity": nn
+                })
+
+            if nn > best["nullity"]:
+                best.update({
+                    "matrix": A,
+                    "rank": rr,
+                    "nullity": nn,
+                    "gap_to_target": target - nn,
+                })
+
+            if nn >= target:
+                if return_diagnostics:
+                    best["diagnostics"] = diag
+                return best
+
+    if return_diagnostics:
+        best["diagnostics"] = diag
+    return best
